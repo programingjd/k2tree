@@ -1,4 +1,6 @@
-# kd-tree
+### Forked from https://github.com/u1roh/kd-tree
+
+# kdt
 
 k-dimensional tree in Rust.
 
@@ -90,27 +92,6 @@ let kdmap: kd_tree::KdMap<[isize; 3], &'static str> = kd_tree::KdMap::build(vec!
 assert_eq!(kdmap.nearest(&[3, 1, 2]).unwrap().item.1, "buzz");
 ```
 
-#### `nalgebra` feature
-`KdPoint` trait is implemented for `nalgebra`'s vectors and points.
-
-Enable `nalgebra` feature in your Cargo.toml:
-```toml
-kd-tree = { version = "...", features = ["nalgebra"] }
-```
-Then, you can use it as follows:
-```rust
-use nalgebra::Point3;
-let items: Vec<Point3<i32>> = vec![
-    Point3::new(1, 2, 3),
-    Point3::new(3, 1, 2),
-    Point3::new(2, 3, 1)
-];
-let kdtree = kd_tree::KdTree::build(items);
-let query = Point3::new(3, 1, 2);
-assert_eq!(kdtree.nearest(&query).unwrap().item, &query);
-```
-
-
 ### Without `KdPoint`
 
 ```rust
@@ -151,64 +132,6 @@ Unlike [`KdSlice::sort`], [`KdIndexTree::build`] doesn't sort input items.
 let items = vec![[1, 2, 3], [3, 1, 2], [2, 3, 1]];
 let kdtree = kd_tree::KdIndexTree::build(&items);
 assert_eq!(kdtree.nearest(&[3, 1, 2]).unwrap().item, &1); // nearest() returns an index of found item.
-```
-
-## Features
-
-### "serde" feature
-```toml
-[dependencies]
-kd-tree = { version = "...", features = ["serde"] }
-```
-You can serialize/deserialize `KdTree<{serializable type}>` with this feature.
-```rust
-let src: KdTree3<[i32; 3]> = KdTree::build(vec![[1, 2, 3], [4, 5, 6]]);
-
-let json = serde_json::to_string(&src).unwrap();
-assert_eq!(json, "[[1,2,3],[4,5,6]]");
-
-let dst: KdTree3<[i32; 3]> = serde_json::from_str(&json).unwrap();
-assert_eq!(src, dst);
-```
-
-
-### "nalgebra" feature
-```toml
-[dependencies]
-kd-tree = { version = "...", features = ["nalgebra"] }
-```
-see [above](#nalgebra-feature)
-
-### "nalgebra-serde" feature
-```toml
-[dependencies]
-kd-tree = { version = "...", features = ["nalgebra-serde"] }
-```
-You can serialize/deserialize `KdTree<{nalgebra type}>` with this feature.
-```rust
-use ::nalgebra as na;
-
-let src: KdTree<na::Point3<f64>> = KdTree::build_by_ordered_float(vec![
-    na::Point3::new(1.0, 2.0, 3.0),
-    na::Point3::new(4.0, 5.0, 6.0),
-]);
-
-let json = serde_json::to_string(&src).unwrap();
-assert_eq!(json, "[[1.0,2.0,3.0],[4.0,5.0,6.0]]");
-
-let dst: KdTree3<na::Point3<f64>> = serde_json::from_str(&json).unwrap();
-assert_eq!(src, dst);
-```
-
-### "rayon" feature
-```toml
-[dependencies]
-kd-tree = { version = "...", features = ["rayon"] }
-```
-
-You can build a kd-tree faster with `rayon`.
-```rust
-let kdtree = KdTree::par_build_by_ordered_float(vec![...]);
 ```
 
 ## License
