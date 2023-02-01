@@ -13,6 +13,20 @@ pub fn build(points: Vec<u64>) -> Vec<u64> {
     K2Tree::build_by(points, |item1, item2, k| item1.get(k).total_cmp(&item2.get(k))).0
 }
 
+#[wasm_bindgen]
+pub fn nearest(tree: Vec<u64>, lat: f32, lon: f32) -> u64 {
+    let tree = K2Tree(tree);
+    let point = Utils::from(lat, lon);
+    tree.nearest(point, &Utils::geo_fast_distance_squared).unwrap().item
+}
+
+#[wasm_bindgen]
+pub fn in_radius(tree: Vec<u64>, lat: f32, lon: f32, radius: f32) -> Vec<u64> {
+    let tree = K2Tree(tree);
+    let center = Utils::from(lat, lon);
+    tree.within_radius(center, radius, &Utils::geo_fast_distance_squared)
+}
+
 impl K2Point for u64 {
     type Scalar = f32;
     fn get(&self, i: usize) -> Self::Scalar {
@@ -37,18 +51,11 @@ impl Utils {
         let y = (lon2 - lon1) * ((lat1+lat2)*0.00872664626f32).cos();
         12351.655f32 * (x*x+y*y)
     }
-}
-
-#[wasm_bindgen]
-pub fn nearest(tree: Vec<u64>, point: u64) -> u64 {
-    let tree = K2Tree(tree);
-    tree.nearest(point, &Utils::geo_fast_distance_squared).unwrap().item
-}
-
-#[wasm_bindgen]
-pub fn in_radius(tree: Vec<u64>, center: u64, radius: f32) -> Vec<u64> {
-    let tree = K2Tree(tree);
-    tree.within_radius(center, radius, &Utils::geo_fast_distance_squared)
+    fn from(lat: f32, lon: f32) -> u64 {
+        let lo = lat.to_le_bytes();
+        let hi = lon.to_le_bytes();
+        u64::from_le_bytes([ lo[0], lo[1], lo[2], lo[3], hi[0], hi[1], hi[2], hi[3] ])
+    }
 }
 
 pub trait K2Point: Copy {
@@ -70,12 +77,7 @@ impl<T> std::ops::Deref for K2Slice<T> {
         &self.0
     }
 }
-impl<P: K2Point> std::borrow::ToOwned for K2Slice<P> {
-    type Owned = K2Tree<P>;
-    fn to_owned(&self) -> Self::Owned {
-        K2Tree(self.0.to_vec())
-    }
-}
+
 impl<P: K2Point> K2Slice<P> {
     pub fn items(&self) -> &[P] {
         &self.0
@@ -158,3 +160,4 @@ impl<P: K2Point> K2Tree<P> {
         Self(items)
     }
 }
+
