@@ -9,9 +9,14 @@ crate-type = ["cdylib","rlib"]
 [dependencies]
 num-traits = "0.2"
 pdqselect = "0.1"
+js-sys = "0.3"
 wasm-bindgen = "0.2"
 
 [profile.release]
 opt-level = "s"
 lto = true
 #panic = "abort"
+
+[profile.test]
+opt-level = "s"
+lto = true
