@@ -21,7 +21,6 @@
   const tree=new Tree(points);
   const ref={lat:46.228,lon:-1.4};
   const nearest=tree.nearest(ref);
-  console.log('b');
   document.querySelector('#nearest').textContent=`lat: ${nearest[1]}, lon: ${nearest[0]}`;
   const within=tree.withinDistance(ref,2.5);
   document.querySelector('#within').textContent=within.map(it=>{

@@ -74,7 +74,6 @@ export class Tree {
    */
   nearest(point){
     const [lon,lat]=Tree.__latlon(point);
-    console.log(`lat: ${lat}, lon: ${lon}`);
     const ret=wasm.tree_nearest(this.ptr,lat,lon);
     const arr=new Float32Array(new BigUint64Array([BigInt.asUintN(64,ret)]).buffer);
     return [arr[1],arr[0]];
@@ -117,17 +116,18 @@ export class Tree {
       const r0=mem[r/4];
       const r1=mem[r/4+1];
       const flat=new BigUint64Array(wasm.memory.buffer).subarray(r0/8,r0/8+r1);
-      const clusters=new Array(64);
+      const clusters=[];
       let i=0;
       const arr=new BigUint64Array(2);
       while(i<flat.length){
         const sub=flat.subarray(i+1,i+1+Number(flat[i]));
         i+=sub.length+1;
         const cluster=new Array(sub.length);
+        let j=0;
         for(const it of sub){
           arr[0]=it;
           const a=new Float32Array(arr.buffer);
-          cluster.push([a[1],a[0]]);
+          cluster[j++]=[a[1],a[0]];
         }
         clusters.push(cluster);
       }
