@@ -14,106 +14,125 @@ const add=o=>{
 };
 const imports={
   wbg:{
-    __wbindgen_object_drop_ref:function(arg0){
-      drop(arg0);
+    __wbindgen_object_drop_ref:function(a){drop(a)},
+    __wbg_buffer_cf65c07de34b9a08:function(a){return add(at(a).buffer)},
+    __wbg_newwithbyteoffsetandlength_3198d2b31342a8de:function(a,b,c){
+      return add(new BigUint64Array(at(a),b>>>0,c>>>0));
     },
-    __wbg_buffer_cf65c07de34b9a08:function(arg0){
-      return add(at(arg0).buffer);
+    __wbg_new_416322ec526e82c1:function(a){return add(new BigUint64Array(at(a)))},
+    __wbindgen_throw:function(a,b){
+      throw new Error(new TextDecoder().decode(new Uint8Array(wasm.memory.buffer).subarray(a,a+b)));
     },
-    __wbg_newwithbyteoffsetandlength_3198d2b31342a8de:function(arg0,arg1,arg2){
-      return add(new BigUint64Array(at(arg0),arg1>>>0,arg2>>>0));
-    },
-    __wbg_new_416322ec526e82c1:function(arg0) {
-      return add(new BigUint64Array(at(arg0)));
-    },
-    __wbindgen_throw:function(arg0,arg1){
-      throw new Error(new TextDecoder().decode(new Uint8Array(wasm.memory.buffer).subarray(arg0,arg0+arg1)));
-    },
-    __wbindgen_memory:function(){
-      return add(wasm.memory);
-    },
+    __wbindgen_memory:function(){return add(wasm.memory)}
   }
 };
 const wasm=(await WebAssembly.instantiate(mod,imports)).exports;
-console.log(wasm);
-
-/**
- */
 export class Tree {
-
-  static __wrap(ptr) {
-    const obj = Object.create(Tree.prototype);
-    obj.ptr = ptr;
-    return obj;
+  /**
+   * @param {LatLon|{lat:number,lng:number}} point
+   * @return {LatLonArray}
+   */
+  static __latlon=point=>{
+    if(Array.isArray(point)) return point;
+    return [point.lon??point.lng,point.lat];
   }
-
-  __destroy_into_raw() {
-    const ptr = this.ptr;
-    this.ptr = 0;
+  static __wrap(ptr){
+    const o=Object.create(Tree.prototype);
+    o.ptr=ptr;
+    return o;
+  }
+  __destroy_into_raw(){
+    const ptr=this.ptr;
+    this.ptr=0;
     return ptr;
   }
-
   free() {
     wasm.__wbg_tree_free(this.__destroy_into_raw());
   }
   /**
-   * @param {BigUint64Array} points
+   * @param {Points} points
    */
-  constructor(points) {
-    const p=wasm.__wbindgen_malloc(points.length*8);
-    new BigUint64Array(wasm.memory.buffer).set(points,p/8);
-    const ret = wasm.tree_new(p,points.length);
+  constructor(points){
+    const arr=points instanceof BigUint64Array?points:(()=>{
+      const arr=new Float32Array(points.length*2);
+      let i=0;
+      for(const pt of points){
+        const [lon,lat]=Tree.__latlon(pt);
+        arr[i++]=lat;
+        arr[i++]=lon;
+      }
+      return new BigUint64Array(arr.buffer);
+    })();
+    const p=wasm.__wbindgen_malloc(arr.length*8);
+    new BigUint64Array(wasm.memory.buffer).set(arr,p/8);
+    const ret=wasm.tree_new(p,arr.length);
     return Tree.__wrap(ret);
   }
   /**
-   * @param {number} lat
-   * @param {number} lon
-   * @returns {bigint}
+   * @param {LatLon} point
+   * @return {LatLonArray}
    */
-  nearest(lat, lon) {
-    const ret = wasm.tree_nearest(this.ptr, lat, lon);
-    return BigInt.asUintN(64, ret);
+  nearest(point){
+    const [lon,lat]=Tree.__latlon(point);
+    console.log(`lat: ${lat}, lon: ${lon}`);
+    const ret=wasm.tree_nearest(this.ptr,lat,lon);
+    const arr=new Float32Array(new BigUint64Array([BigInt.asUintN(64,ret)]).buffer);
+    return [arr[1],arr[0]];
   }
   /**
-   * @param {number} lat
-   * @param {number} lon
+   * @param {LatLon} point
    * @param {number} distance
-   * @returns {BigUint64Array}
+   * @return {LatLonArray[]}
    */
-  within_distance(lat, lon, distance) {
-    try {
-      const r = wasm.__wbindgen_add_to_stack_pointer(-16);
+  withinDistance(point, distance) {
+    try{
+      const [lon,lat]=Tree.__latlon(point);
+      const r=wasm.__wbindgen_add_to_stack_pointer(-16);
       wasm.tree_within_distance(r,this.ptr,lat,lon,distance);
       const mem=new Int32Array(wasm.memory.buffer);
-      const r0 = mem[r/4];
-      const r1 = mem[r/4+1];
-      const v0 = new BigUint64Array(wasm.memory.buffer).subarray(r0/8,r0/8+r1).slice();
+      const r0=mem[r/4];
+      const r1=mem[r/4+1];
+      const v0=new BigUint64Array(wasm.memory.buffer).subarray(r0/8,r0/8+r1);
+      const w=new Array(v0.length);
+      let i=0;
+      const a=new BigUint64Array(1);
+      for(const it of v0){
+        a[0]=it;
+        const b=new Float32Array(a.buffer);
+        w[i++]=[b[1],b[0]];
+      }
       wasm.__wbindgen_free(r0,r1*8);
-      return v0;
-    } finally {
-      wasm.__wbindgen_add_to_stack_pointer(16);
-    }
+      return w;
+    }finally{wasm.__wbindgen_add_to_stack_pointer(16)}
   }
   /**
    * @param {number} distance
-   * @returns {(BigUint64Array)[]}
+   * @return {LatLonArray[][]}
    */
   clusterify(distance) {
     try {
-      const r = wasm.__wbindgen_add_to_stack_pointer(-16);
+      const r=wasm.__wbindgen_add_to_stack_pointer(-16);
       wasm.tree_clusterify(r, this.ptr, distance);
       const mem=new Int32Array(wasm.memory.buffer);
-      const r0 = mem[r/4];
-      const r1 = mem[r/4+1];
-      const arr=new Uint32Array(wasm.memory.buffer).subarray(r0/4,r0/4+r1);
-      const v0=new Array(arr.length);
-      for(const i of arr){
-        const it=at(i);
-        v0.push(it);
-        drop(i);
+      const r0=mem[r/4];
+      const r1=mem[r/4+1];
+      const flat=new BigUint64Array(wasm.memory.buffer).subarray(r0/8,r0/8+r1);
+      const clusters=new Array(64);
+      let i=0;
+      const arr=new BigUint64Array(2);
+      while(i<flat.length){
+        const sub=flat.subarray(i+1,i+1+Number(flat[i]));
+        i+=sub.length+1;
+        const cluster=new Array(sub.length);
+        for(const it of sub){
+          arr[0]=it;
+          const a=new Float32Array(arr.buffer);
+          cluster.push([a[1],a[0]]);
+        }
+        clusters.push(cluster);
       }
-      wasm.__wbindgen_free(r0,r1*4);
-      return v0;
+      wasm.__wbindgen_free(r0,r1*8);
+      return clusters;
     } finally {
       wasm.__wbindgen_add_to_stack_pointer(16);
     }

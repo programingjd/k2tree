@@ -2,7 +2,6 @@ mod nearest;
 mod sort;
 mod within;
 
-use js_sys::BigUint64Array;
 use nearest::*;
 use sort::*;
 use std::cmp::Ordering;
@@ -40,11 +39,13 @@ impl Tree {
         self.0
             .within_radius(center, distance, &Utils::geo_fast_distance_squared)
     }
+
     #[wasm_bindgen]
-    pub fn clusterify(&self, distance: f32) -> Vec<BigUint64Array> {
+    pub fn clusterify(&self, distance: f32) -> Vec<u64> {
         self.cluster(distance)
             .into_iter()
-            .map(|it| it.as_slice().into())
+            // .map(|it| it.as_slice().into())
+            .flat_map(|it|  [vec![it.len() as u64], it].concat().to_vec())
             .collect()
     }
     fn cluster(&self, distance: f32) -> Vec<Vec<u64>> {

@@ -1,10 +1,13 @@
+export type latitude = number;
+export type longitude = number;
+export type LatLonObject = { lat: latitude, lon: longitude };
+export type LatLonArray = [longitude,latitude];
+export type LatLon = LatLonObject | LatLonArray;
+export type Points = BigUint64Array | LatLon[]
 export class Tree {
   free(): void;
-  // @ts-ignore
-  constructor(points: BigUint64Array);
-  nearest(lat: number, lon: number): bigint;
-  // @ts-ignore
-  within_distance(lat: number, lon: number, distance: number): BigUint64Array;
-  // @ts-ignore
-  clusterify(distance: number): (BigUint64Array)[];
+  constructor(points: Points);
+  nearest(point: LatLon): LatLonArray;
+  withinDistance(point: LatLon, distance: number): LatLonArray[];
+  clusterify(distance: number): LatLonArray[][];
 }
