@@ -1,29 +1,10 @@
 const url=new URL('k2tree.wasm',import.meta.url);
 const mod=await WebAssembly.compileStreaming(await fetch(url));
-const heap=new Array(128).fill(undefined);
-heap.push(undefined,null,true,false);
-let next=heap.length;
-const at=i=>heap[i];
-const drop=i=>i<132?heap[i]=next:next=i;
-const add=o=>{
-  if(next===heap.length) heap.push(heap.length+1);
-  const i=next;
-  next=heap[i];
-  heap[i]=o;
-  return i;
-};
 const imports={
   wbg:{
-    __wbindgen_object_drop_ref:function(a){drop(a)},
-    __wbg_buffer_cf65c07de34b9a08:function(a){return add(at(a).buffer)},
-    __wbg_newwithbyteoffsetandlength_3198d2b31342a8de:function(a,b,c){
-      return add(new BigUint64Array(at(a),b>>>0,c>>>0));
-    },
-    __wbg_new_416322ec526e82c1:function(a){return add(new BigUint64Array(at(a)))},
     __wbindgen_throw:function(a,b){
       throw new Error(new TextDecoder().decode(new Uint8Array(wasm.memory.buffer).subarray(a,a+b)));
-    },
-    __wbindgen_memory:function(){return add(wasm.memory)}
+    }
   }
 };
 const wasm=(await WebAssembly.instantiate(mod,imports)).exports;
@@ -84,10 +65,37 @@ export class Tree {
    * @return {LatLonArray[]}
    */
   withinDistance(point, distance) {
+    const [lon,lat]=Tree.__latlon(point);
     try{
-      const [lon,lat]=Tree.__latlon(point);
       const r=wasm.__wbindgen_add_to_stack_pointer(-16);
       wasm.tree_within_distance(r,this.ptr,lat,lon,distance);
+      const mem=new Int32Array(wasm.memory.buffer);
+      const r0=mem[r/4];
+      const r1=mem[r/4+1];
+      const v0=new BigUint64Array(wasm.memory.buffer).subarray(r0/8,r0/8+r1);
+      const w=new Array(v0.length);
+      let i=0;
+      const a=new BigUint64Array(1);
+      for(const it of v0){
+        a[0]=it;
+        const b=new Float32Array(a.buffer);
+        w[i++]=[b[1],b[0]];
+      }
+      wasm.__wbindgen_free(r0,r1*8);
+      return w;
+    }finally{wasm.__wbindgen_add_to_stack_pointer(16)}
+  }
+  /**
+   * @param {LatLon} ne
+   * @param {LatLon} sw
+   * @return {LatLonArray[]}
+   */
+  withinBounds(ne, sw) {
+    const [neLon,neLat]=Tree.__latlon(ne);
+    const [swLon,swLat]=Tree.__latlon(sw);
+    try{
+      const r=wasm.__wbindgen_add_to_stack_pointer(-16);
+      wasm.tree_within_bounds(r,this.ptr,neLat,neLon,swLat,swLon);
       const mem=new Int32Array(wasm.memory.buffer);
       const r0=mem[r/4];
       const r1=mem[r/4+1];

@@ -9,5 +9,6 @@ export class Tree {
   constructor(points: Points);
   nearest(point: LatLon): LatLonArray;
   withinDistance(point: LatLon, distance: number): LatLonArray[];
+  withinBounds(ne: LatLon, sw: LatLon): LatLonArray[];
   clusterify(distance: number): LatLonArray[][];
 }

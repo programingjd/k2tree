@@ -29,15 +29,46 @@ impl Tree {
     pub fn nearest(&self, lat: f32, lon: f32) -> u64 {
         let point = Utils::from(lat, lon);
         self.0
-            .nearest(point, &Utils::geo_fast_distance_squared)
+            .nearest(point, &Utils::geo_fast_distance_squared_km2)
             .unwrap()
             .item
     }
     #[wasm_bindgen]
-    pub fn within_distance(&self, lat: f32, lon: f32, distance: f32) -> Vec<u64> {
+    pub fn within_distance(&self, lat: f32, lon: f32, distance_km: f32) -> Vec<u64> {
         let center = Utils::from(lat, lon);
         self.0
-            .within_radius(center, distance, &Utils::geo_fast_distance_squared)
+            .within_radius(center, distance_km, &Utils::geo_fast_distance_squared_km2)
+    }
+
+    #[wasm_bindgen]
+    pub fn within_bounds(&self, ne_lat: f32, ne_lon: f32, sw_lat: f32, sw_lon: f32) -> Vec<u64> {
+        let mut ne_lon = ne_lon;
+        if ne_lon < sw_lon {
+            ne_lon += 360.0;
+        }
+        self.0.within_by_cmp(|item, k| {
+            let mut coord = item.get(k);
+            if k == 1 {
+                if ne_lon > 180.0 && coord < 0.0 {
+                    coord += 360.0;
+                }
+                if coord < sw_lon {
+                    Ordering::Less
+                } else if coord > ne_lon {
+                    Ordering::Greater
+                } else {
+                    Ordering::Equal
+                }
+            } else {
+                if coord < sw_lat {
+                    Ordering::Less
+                } else if coord > ne_lat {
+                    Ordering::Greater
+                } else {
+                    Ordering::Equal
+                }
+            }
+        })
     }
 
     #[wasm_bindgen]
@@ -45,7 +76,7 @@ impl Tree {
         self.cluster(distance)
             .into_iter()
             // .map(|it| it.as_slice().into())
-            .flat_map(|it|  [vec![it.len() as u64], it].concat().to_vec())
+            .flat_map(|it| [vec![it.len() as u64], it].concat().to_vec())
             .collect()
     }
     fn cluster(&self, distance: f32) -> Vec<Vec<u64>> {
@@ -64,7 +95,7 @@ impl Tree {
                 for i in slice.indices_within_radius(
                     slice[j],
                     distance,
-                    &Utils::geo_fast_distance_squared,
+                    &Utils::geo_fast_distance_squared_km2,
                 ) {
                     if !clustered[i] {
                         queue.push(i);
@@ -77,56 +108,6 @@ impl Tree {
         clusters
     }
 }
-
-// pub fn build(points: Vec<u64>) -> Vec<u64> {
-//     K2Tree::build_by(points, |item1, item2, k| {
-//         item1.get(k).total_cmp(&item2.get(k))
-//     })
-//     .0
-// }
-//
-// //#[wasm_bindgen]
-// pub fn nearest(tree: Vec<u64>, lat: f32, lon: f32) -> u64 {
-//     let tree = K2Tree(tree);
-//     let point = Utils::from(lat, lon);
-//     tree.nearest(point, &Utils::geo_fast_distance_squared)
-//         .unwrap()
-//         .item
-// }
-//
-// //#[wasm_bindgen]
-// pub fn within_distance(tree: Vec<u64>, lat: f32, lon: f32, distance: f32) -> Vec<u64> {
-//     let tree = K2Tree(tree);
-//     let center = Utils::from(lat, lon);
-//     tree.within_radius(center, distance, &Utils::geo_fast_distance_squared)
-// }
-//
-// pub fn cluster(tree: Vec<u64>, distance: f32) -> Vec<Vec<u64>> {
-//     let tree = K2Tree(tree);
-//     let mut clusters = vec![];
-//     let mut clustered: Vec<bool> = tree.iter().map(|_| false).collect();
-//     for (i, _) in tree.iter().enumerate() {
-//         if clustered[i] {
-//             continue;
-//         }
-//         let mut cluster = vec![];
-//         let mut queue = vec![i];
-//         clustered[i] = true;
-//         while let Some(j) = queue.pop() {
-//             cluster.push(tree[j]);
-//             for i in
-//                 tree.indices_within_radius(tree[j], distance, &Utils::geo_fast_distance_squared)
-//             {
-//                 if !clustered[i] {
-//                     queue.push(i);
-//                     clustered[i] = true;
-//                 }
-//             }
-//         }
-//         clusters.push(cluster);
-//     }
-//     clusters
-// }
 
 impl K2Point for u64 {
     type Scalar = f32;
@@ -143,13 +124,19 @@ impl K2Point for u64 {
 
 struct Utils {}
 impl Utils {
-    fn geo_fast_distance_squared(p1: u64, p2: u64) -> f32 {
+    fn geo_fast_distance_squared_km2(p1: u64, p2: u64) -> f32 {
         let lat1 = p1.get(0);
         let lat2 = p2.get(0);
         let lon1 = p1.get(1);
         let lon2 = p2.get(1);
+        let mut dlon = lon2 - lon1;
+        if dlon < -180.0 {
+            dlon += 360.0;
+        } else if dlon > 180.0 {
+            dlon -= 360.0;
+        }
         let x = lat2 - lat1;
-        let y = (lon2 - lon1) * ((lat1 + lat2) * 0.00872664626f32).cos();
+        let y = dlon * ((lat1 + lat2) * 0.00872664626f32).cos();
         12351.655f32 * (x * x + y * y)
     }
     fn from(lat: f32, lon: f32) -> u64 {
@@ -172,7 +159,7 @@ pub struct ItemAndDistance<T, Scalar> {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct K2Slice<T>([T]);
-impl<T> std::ops::Deref for K2Slice<T> {
+impl<T> Deref for K2Slice<T> {
     type Target = [T];
     fn deref(&self) -> &[T] {
         &self.0
@@ -254,7 +241,7 @@ impl<P: K2Point> K2Slice<P> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct K2Tree<P: K2Point>(Vec<P>);
-impl<P: K2Point> std::ops::Deref for K2Tree<P> {
+impl<P: K2Point> Deref for K2Tree<P> {
     type Target = K2Slice<P>;
     fn deref(&self) -> &Self::Target {
         unsafe { K2Slice::new_unchecked(&self.0) }
@@ -288,26 +275,72 @@ impl<P: K2Point> K2Tree<P> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use approx::assert_relative_eq;
     use std::time::SystemTime;
+
+    #[test]
+    fn distance_squared() {
+        assert_relative_eq!(
+            Utils::geo_fast_distance_squared_km2(
+                Utils::from(46.1956, -1.4082),
+                Utils::from(46.1628, -1.1565)
+            )
+            .sqrt(),
+            19.77,
+            max_relative = 0.01
+        );
+        assert_relative_eq!(
+            Utils::geo_fast_distance_squared_km2(Utils::from(46.1, -0.2), Utils::from(46.1, 0.2))
+                .sqrt(),
+            30.93,
+            max_relative = 0.01
+        );
+        assert_relative_eq!(
+            Utils::geo_fast_distance_squared_km2(
+                Utils::from(-14.2846, -178.1374),
+                Utils::from(-16.5886, 179.2047)
+            )
+            .sqrt(),
+            382.57,
+            max_relative = 0.01
+        );
+    }
 
     #[test]
     fn nearest_point() {
         let tree = Tree::new(points());
         let pt = tree.nearest(45.56, -0.955);
-        println!("{}, {}", pt.get(0), pt.get(1));
+        assert_relative_eq!(pt.get(0), 45.56, epsilon = 0.001);
+        assert_relative_eq!(pt.get(1), -0.955, epsilon = 0.001);
+        //println!("{}, {}", pt.get(0), pt.get(1));
     }
     #[test]
     fn points_within_distance() {
         let tree = Tree::new(points());
-        let pts = tree.within_distance(45.56, -0.955, 1.5);
-        // let tree = K2Tree(tree);
-        // let center = Utils::from(lat, lon);
-        // tree.within_radius(center, distance, &Utils::geo_fast_distance_squared)
-        println!("{}", pts.len());
+        let pts = tree.within_distance(45.56, -0.955, 0.25);
+        assert_eq!(pts.len(), 27);
         for pt in pts.iter() {
-            println!("{}, {}", pt.get(0), pt.get(1));
+            assert!(
+                Utils::geo_fast_distance_squared_km2(Utils::from(45.56, -0.955), *pt).sqrt() < 0.25
+            );
+            //println!("{}, {}", pt.get(0), pt.get(1));
         }
     }
+
+    #[test]
+    fn points_within_bounds() {
+        let tree = Tree::new(points());
+        let pts = tree.within_bounds(45.57, -0.952, 45.54, -0.958);
+        assert_eq!(pts.len(), 65);
+        for pt in pts.iter() {
+            assert_relative_eq!(
+                Utils::geo_fast_distance_squared_km2(Utils::from(45.555, -0.953), *pt).sqrt(),
+                0.0,
+                epsilon = 1.25
+            );
+        }
+    }
+
     #[test]
     fn points_clusters() {
         let t0 = SystemTime::now();

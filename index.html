@@ -12,7 +12,8 @@
 </head>
 <body>
 <div id="nearest"></div>
-<div id="within"></div>
+<div id="within_radius"></div>
+<div id="within_bounds"></div>
 <div id="clusters"></div>
 <script type="module">
   import {Tree} from './k2tree.mjs';
@@ -22,12 +23,57 @@
   const ref={lat:46.228,lon:-1.4};
   const nearest=tree.nearest(ref);
   document.querySelector('#nearest').textContent=`lat: ${nearest[1]}, lon: ${nearest[0]}`;
-  const within=tree.withinDistance(ref,2.5);
-  document.querySelector('#within').textContent=within.map(it=>{
+  const withinRadius=tree.withinDistance(ref,2.5);
+  document.querySelector('#within_radius').textContent=withinRadius.map(it=>{
+    return `lat: ${it[1]}, lon: ${it[0]}`;
+  }).join('\n');
+  const withingBounds=tree.withinBounds([.46157,45.8329],[-.194,45.54829]);
+  console.log(withingBounds.length);
+  document.querySelector('#within_bounds').textContent=withingBounds.map(it=>{
     return `lat: ${it[1]}, lon: ${it[0]}`;
   }).join('\n');
   const clusters=tree.clusterify(2);
   document.querySelector('#clusters').textContent=[`${clusters.length} clusters`,'',...clusters.map(pts=>`${pts.length} points: ${pts.map(pt=>`lat: ${pt[1]}, lon: ${pt[0]}`).join('\n')}`)].join('\n\n');
+  const geojson={
+    type: 'FeatureCollection',
+    features: []
+  };
+  // points.forEach(it=>{
+  //   geojson.features.push({
+  //     type: 'Feature',
+  //     properties: {
+  //       'marker-color': '#ff8800',
+  //       'marker-size': 'small'
+  //     },
+  //     geometry:{
+  //       type: 'Point',
+  //       coordinates:[it.lon,it.lat]
+  //     }
+  //   });
+  // });
+  clusters.forEach(cluster=>{
+    let lon=0;
+    let lat=0;
+    for(const it of cluster){
+      lon+=it[0];
+      lat+=it[1];
+    }
+    lon/=cluster.length;
+    lat/=cluster.length;
+    geojson.features.push({
+      type: 'Feature',
+      properties: {
+        'marker-color': cluster.length===1?'#ff8800':'#88ff00',
+        'marker-size': 'small',
+        'marker-symbol': cluster.length
+      },
+      geometry:{
+        type: 'Point',
+        coordinates:[lon,lat]
+      }
+    });
+  });
+  console.log(JSON.stringify(geojson));
   tree.free();
 </script>
 </body>
