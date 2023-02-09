@@ -26,6 +26,14 @@ impl Tree {
         Self(K2Tree(a))
     }
     #[wasm_bindgen]
+    pub fn length(&self) -> usize {
+        self.0.len()
+    }
+    #[wasm_bindgen]
+    pub fn at_index(&self, index: usize) -> u64 {
+        self.0[index]
+    }
+    #[wasm_bindgen]
     pub fn nearest(&self, lat: f32, lon: f32) -> u64 {
         let point = Utils::from(lat, lon);
         self.0
