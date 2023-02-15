@@ -5,6 +5,7 @@ mod within;
 use nearest::*;
 use sort::*;
 use std::cmp::Ordering;
+use std::fmt::Display;
 use wasm_bindgen::prelude::wasm_bindgen;
 use within::*;
 
@@ -95,7 +96,7 @@ impl Tree {
             while let Some(j) = queue.pop() {
                 cluster.push(indices[j]);
                 for i in &self.0.within_radius(
-                     coords[indices[j] as usize],
+                    coords[indices[j] as usize],
                     distance,
                     &Utils::geo_fast_distance_squared_km2,
                 ) {
@@ -140,7 +141,9 @@ impl Utils {
         }
         let x = lat2 - lat1;
         let y = dlon * ((lat1 + lat2) * 0.00872664626f32).cos();
-        12351.655f32 * (x * x + y * y)
+        let result = 12351.655f32 * (x * x + y * y);
+        println!("distance: {:.3?}", result);
+        result
     }
     fn from(lat: f32, lon: f32) -> u64 {
         let lo = lat.to_le_bytes();
@@ -150,7 +153,7 @@ impl Utils {
 }
 
 pub trait K2Point: Copy {
-    type Scalar: num_traits::NumAssign + Copy + PartialOrd;
+    type Scalar: num_traits::NumAssign + Copy + PartialOrd + Display;
     fn get(&self, size: usize) -> Self::Scalar;
 }
 
@@ -160,17 +163,7 @@ pub struct IndexAndDistance<Scalar> {
     pub squared_distance: Scalar,
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct K2Slice<'a, T> {
-    coords: &'a [T],
-    indices: [u32]
-}
-
 impl<P: K2Point> K2Tree<P> {
-    // unsafe fn new_unchecked(items: &[P]) -> &Self {
-    //     &*(items as *const _ as *const Self)
-    // }
-
     pub fn nearest(
         &self,
         query: P,
@@ -179,7 +172,12 @@ impl<P: K2Point> K2Tree<P> {
         if self.indices.is_empty() {
             None
         } else {
-            Some(k2_nearest(&self.coords, &self.indices, query, distance_squared))
+            Some(k2_nearest(
+                &self.coords,
+                &self.indices,
+                query,
+                distance_squared,
+            ))
         }
     }
 
@@ -206,6 +204,7 @@ impl<P: K2Point> K2Tree<P> {
         results.retain(|index| {
             distance_squared(self.coords[*index as usize], query) < radius * radius
         });
+        println!("within {}: {}", radius, results.len());
         results
     }
 }
@@ -213,7 +212,7 @@ impl<P: K2Point> K2Tree<P> {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct K2Tree<P: K2Point> {
     pub coords: Vec<P>,
-    pub indices: Vec<u32>
+    pub indices: Vec<u32>,
 }
 /*
 impl<P: K2Point> Deref for K2Tree<P> {
@@ -280,22 +279,27 @@ mod tests {
     #[test]
     fn nearest_point() {
         let points = points();
-        let tree = Tree::new(points.clone());
+        let tree = Tree::new(points);
         let index = tree.nearest(45.56, -0.955) as usize;
-        assert_relative_eq!(points[index].get(0), 45.56, epsilon = 0.001);
-        assert_relative_eq!(points[index].get(1), -0.955, epsilon = 0.001);
+        assert_relative_eq!(tree.0.coords[index].get(0), 45.56, epsilon = 0.001);
+        assert_relative_eq!(tree.0.coords[index].get(1), -0.955, epsilon = 0.001);
         //println!("{}, {}", pt.get(0), pt.get(1));
     }
     #[test]
     fn points_within_distance() {
         let points = points();
-        let tree = Tree::new(points.clone());
+        let tree = Tree::new(points);
         let indices = tree.within_distance(45.56, -0.955, 0.25);
         assert_eq!(indices.len(), 27);
         for index in indices.iter() {
             let index = *index as usize;
             assert!(
-                Utils::geo_fast_distance_squared_km2(Utils::from(45.56, -0.955), points[index]).sqrt() < 0.25
+                Utils::geo_fast_distance_squared_km2(
+                    Utils::from(45.56, -0.955),
+                    tree.0.coords[index]
+                )
+                .sqrt()
+                    < 0.25
             );
             //println!("{}, {}", pt.get(0), pt.get(1));
         }
@@ -304,13 +308,17 @@ mod tests {
     #[test]
     fn points_within_bounds() {
         let points = points();
-        let tree = Tree::new(points.clone());
+        let tree = Tree::new(points);
         let indices = tree.within_bounds(45.57, -0.952, 45.54, -0.958);
         assert_eq!(indices.len(), 65);
         for index in indices.iter() {
             let index = *index as usize;
             assert_relative_eq!(
-                Utils::geo_fast_distance_squared_km2(Utils::from(45.555, -0.953), points[index]).sqrt(),
+                Utils::geo_fast_distance_squared_km2(
+                    Utils::from(45.555, -0.953),
+                    tree.0.coords[index]
+                )
+                .sqrt(),
                 0.0,
                 epsilon = 1.25
             );
@@ -320,15 +328,16 @@ mod tests {
     #[test]
     fn points_clusters() {
         let t0 = SystemTime::now();
-        let tree = Tree::new(points());
+        let tree = Tree::new(points().into_iter().take(10).collect());
         let t1 = SystemTime::now();
-        let clusters = tree.cluster(2.0);
+        let clusters = tree.cluster(0.2);
         let t2 = SystemTime::now();
         println!(
             "{}ms, {}ms",
             t1.duration_since(t0).unwrap().as_millis(),
             t2.duration_since(t1).unwrap().as_millis()
         );
+        assert_eq!(3, clusters.len());
         println!("{}", clusters.len());
         for cluster in clusters.iter() {
             println!("cluster with {} point(s)", cluster.len());

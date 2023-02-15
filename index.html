@@ -21,19 +21,21 @@
 
   const tree=new Tree(points);
   const ref={lat:46.228,lon:-1.4};
-  const nearest=tree.nearest(ref);
-  document.querySelector('#nearest').textContent=`lat: ${nearest[1]}, lon: ${nearest[0]}`;
+  const nearest=points[tree.nearest(ref)];
+  document.querySelector('#nearest').textContent=`lat: ${nearest.lat}, lon: ${nearest.lon}`;
   const withinRadius=tree.withinDistance(ref,2.5);
-  document.querySelector('#within_radius').textContent=withinRadius.map(it=>{
-    return `lat: ${it[1]}, lon: ${it[0]}`;
+  document.querySelector('#within_radius').textContent=withinRadius.map(i=>{
+    const it=points[i];
+    return `lat: ${it.lat}, lon: ${it.lon}`;
   }).join('\n');
   const withingBounds=tree.withinBounds([.46157,45.8329],[-.194,45.54829]);
   console.log(withingBounds.length);
-  document.querySelector('#within_bounds').textContent=withingBounds.map(it=>{
+  document.querySelector('#within_bounds').textContent=withingBounds.map(i=>{
+    const it=points[i];
     return `lat: ${it[1]}, lon: ${it[0]}`;
   }).join('\n');
   const clusters=tree.clusterify(2);
-  document.querySelector('#clusters').textContent=[`${clusters.length} clusters`,'',...clusters.map(pts=>`${pts.length} points: ${pts.map(pt=>`lat: ${pt[1]}, lon: ${pt[0]}`).join('\n')}`)].join('\n\n');
+  document.querySelector('#clusters').textContent=[`${clusters.length} clusters`,'',...clusters.map(pts=>`${pts.length} points: ${pts.map(i=>`lat: ${points[i].lat}, lon: ${points[i].lon}`).join('\n')}`)].join('\n\n');
   const geojson={
     type: 'FeatureCollection',
     features: []
@@ -54,9 +56,9 @@
   clusters.forEach(cluster=>{
     let lon=0;
     let lat=0;
-    for(const it of cluster){
-      lon+=it[0];
-      lat+=it[1];
+    for(const i of cluster){
+      lon+=points[i][0];
+      lat+=points[i][1];
     }
     lon/=cluster.length;
     lat/=cluster.length;

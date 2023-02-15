@@ -51,18 +51,16 @@ export class Tree {
   }
   /**
    * @param {LatLon} point
-   * @return {LatLonArray}
+   * @return {number}
    */
   nearest(point){
     const [lon,lat]=Tree.__latlon(point);
-    const ret=wasm.tree_nearest(this.ptr,lat,lon);
-    const arr=new Float32Array(new BigUint64Array([BigInt.asUintN(64,ret)]).buffer);
-    return [arr[1],arr[0]];
+    return wasm.tree_nearest(this.ptr,lat,lon) >>> 0;
   }
   /**
    * @param {LatLon} point
    * @param {number} distance
-   * @return {LatLonArray[]}
+   * @return {number[]}
    */
   withinDistance(point, distance) {
     const [lon,lat]=Tree.__latlon(point);
@@ -72,23 +70,16 @@ export class Tree {
       const mem=new Int32Array(wasm.memory.buffer);
       const r0=mem[r/4];
       const r1=mem[r/4+1];
-      const v0=new BigUint64Array(wasm.memory.buffer).subarray(r0/8,r0/8+r1);
-      const w=new Array(v0.length);
-      let i=0;
-      const a=new BigUint64Array(1);
-      for(const it of v0){
-        a[0]=it;
-        const b=new Float32Array(a.buffer);
-        w[i++]=[b[1],b[0]];
-      }
-      wasm.__wbindgen_free(r0,r1*8);
+      const v0=new Uint32Array(wasm.memory.buffer).subarray(r0/4,r0/4+r1);
+      const w=[...v0];
+      wasm.__wbindgen_free(r0,r1*4);
       return w;
     }finally{wasm.__wbindgen_add_to_stack_pointer(16)}
   }
   /**
    * @param {LatLon} ne
    * @param {LatLon} sw
-   * @return {LatLonArray[]}
+   * @return {number[]}
    */
   withinBounds(ne, sw) {
     const [neLon,neLat]=Tree.__latlon(ne);
@@ -99,16 +90,9 @@ export class Tree {
       const mem=new Int32Array(wasm.memory.buffer);
       const r0=mem[r/4];
       const r1=mem[r/4+1];
-      const v0=new BigUint64Array(wasm.memory.buffer).subarray(r0/8,r0/8+r1);
-      const w=new Array(v0.length);
-      let i=0;
-      const a=new BigUint64Array(1);
-      for(const it of v0){
-        a[0]=it;
-        const b=new Float32Array(a.buffer);
-        w[i++]=[b[1],b[0]];
-      }
-      wasm.__wbindgen_free(r0,r1*8);
+      const v0=new Uint32Array(wasm.memory.buffer).subarray(r0/4,r0/4+r1);
+      const w=[...v0];
+      wasm.__wbindgen_free(r0,r1*4);
       return w;
     }finally{wasm.__wbindgen_add_to_stack_pointer(16)}
   }
@@ -123,23 +107,20 @@ export class Tree {
       const mem=new Int32Array(wasm.memory.buffer);
       const r0=mem[r/4];
       const r1=mem[r/4+1];
-      const flat=new BigUint64Array(wasm.memory.buffer).subarray(r0/8,r0/8+r1);
+      const flat=new Uint32Array(wasm.memory.buffer).subarray(r0/4,r0/4+r1);
       const clusters=[];
       let i=0;
-      const arr=new BigUint64Array(2);
       while(i<flat.length){
         const sub=flat.subarray(i+1,i+1+Number(flat[i]));
         i+=sub.length+1;
         const cluster=new Array(sub.length);
         let j=0;
         for(const it of sub){
-          arr[0]=it;
-          const a=new Float32Array(arr.buffer);
-          cluster[j++]=[a[1],a[0]];
+          cluster[j++]=it;
         }
         clusters.push(cluster);
       }
-      wasm.__wbindgen_free(r0,r1*8);
+      wasm.__wbindgen_free(r0,r1*4);
       return clusters;
     } finally {
       wasm.__wbindgen_add_to_stack_pointer(16);
