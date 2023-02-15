@@ -5,7 +5,6 @@ mod within;
 use nearest::*;
 use sort::*;
 use std::cmp::Ordering;
-use std::ops::Deref;
 use wasm_bindgen::prelude::wasm_bindgen;
 use within::*;
 
@@ -15,41 +14,34 @@ pub struct Tree(K2Tree<u64>);
 #[wasm_bindgen]
 impl Tree {
     #[wasm_bindgen(constructor)]
-    pub fn new(points: Vec<u64>) -> Self {
-        // K2Tree::build_by(points, |item1, item2, k| {
-        //     item1.get(k).total_cmp(&item2.get(k))
-        // });
-        let mut a = points;
-        k2_sort_by(a.as_mut_slice(), |item1, item2, k| {
-            item1.get(k).total_cmp(&item2.get(k))
+    pub fn new(coords: Vec<u64>) -> Self {
+        let mut indices: Vec<u32> = (0u32..coords.len() as u32).collect();
+        k2_sort_by(&coords, indices.as_mut_slice(), |coords1, coords2, k| {
+            coords1.get(k).total_cmp(&coords2.get(k))
         });
-        Self(K2Tree(a))
+        Self(K2Tree { coords, indices })
     }
     #[wasm_bindgen]
     pub fn length(&self) -> usize {
-        self.0.len()
+        self.0.indices.len()
     }
     #[wasm_bindgen]
-    pub fn at_index(&self, index: usize) -> u64 {
-        self.0[index]
-    }
-    #[wasm_bindgen]
-    pub fn nearest(&self, lat: f32, lon: f32) -> u64 {
+    pub fn nearest(&self, lat: f32, lon: f32) -> u32 {
         let point = Utils::from(lat, lon);
         self.0
             .nearest(point, &Utils::geo_fast_distance_squared_km2)
             .unwrap()
-            .item
+            .index
     }
     #[wasm_bindgen]
-    pub fn within_distance(&self, lat: f32, lon: f32, distance_km: f32) -> Vec<u64> {
+    pub fn within_distance(&self, lat: f32, lon: f32, distance_km: f32) -> Vec<u32> {
         let center = Utils::from(lat, lon);
         self.0
             .within_radius(center, distance_km, &Utils::geo_fast_distance_squared_km2)
     }
 
     #[wasm_bindgen]
-    pub fn within_bounds(&self, ne_lat: f32, ne_lon: f32, sw_lat: f32, sw_lon: f32) -> Vec<u64> {
+    pub fn within_bounds(&self, ne_lat: f32, ne_lon: f32, sw_lat: f32, sw_lon: f32) -> Vec<u32> {
         let mut ne_lon = ne_lon;
         if ne_lon < sw_lon {
             ne_lon += 360.0;
@@ -80,18 +72,20 @@ impl Tree {
     }
 
     #[wasm_bindgen]
-    pub fn clusterify(&self, distance: f32) -> Vec<u64> {
+    pub fn clusterify(&self, distance: f32) -> Vec<u32> {
         self.cluster(distance)
             .into_iter()
             // .map(|it| it.as_slice().into())
-            .flat_map(|it| [vec![it.len() as u64], it].concat().to_vec())
+            .flat_map(|it| [vec![it.len() as u32], it].concat().to_vec())
             .collect()
     }
-    fn cluster(&self, distance: f32) -> Vec<Vec<u64>> {
-        let slice = self.0.deref();
+    fn cluster(&self, distance: f32) -> Vec<Vec<u32>> {
+        let coords = &self.0.coords;
+        let indices = &self.0.indices;
         let mut clusters = vec![];
-        let mut clustered: Vec<bool> = slice.iter().map(|_| false).collect();
-        for (i, _) in slice.iter().enumerate() {
+        let mut clustered: Vec<bool> = indices.iter().map(|_| false).collect();
+        for i in indices.iter() {
+            let i = *i as usize;
             if clustered[i] {
                 continue;
             }
@@ -99,12 +93,13 @@ impl Tree {
             let mut queue = vec![i];
             clustered[i] = true;
             while let Some(j) = queue.pop() {
-                cluster.push(slice[j]);
-                for i in slice.indices_within_radius(
-                    slice[j],
+                cluster.push(indices[j]);
+                for i in &self.0.within_radius(
+                     coords[indices[j] as usize],
                     distance,
                     &Utils::geo_fast_distance_squared_km2,
                 ) {
+                    let i = *i as usize;
                     if !clustered[i] {
                         queue.push(i);
                         clustered[i] = true;
@@ -160,50 +155,36 @@ pub trait K2Point: Copy {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ItemAndDistance<T, Scalar> {
-    pub item: T,
+pub struct IndexAndDistance<Scalar> {
+    pub index: u32,
     pub squared_distance: Scalar,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct K2Slice<T>([T]);
-impl<T> Deref for K2Slice<T> {
-    type Target = [T];
-    fn deref(&self) -> &[T] {
-        &self.0
-    }
+pub struct K2Slice<'a, T> {
+    coords: &'a [T],
+    indices: [u32]
 }
 
-impl<P: K2Point> K2Slice<P> {
-    pub fn items(&self) -> &[P] {
-        &self.0
-    }
-
-    unsafe fn new_unchecked(items: &[P]) -> &Self {
-        &*(items as *const _ as *const Self)
-    }
+impl<P: K2Point> K2Tree<P> {
+    // unsafe fn new_unchecked(items: &[P]) -> &Self {
+    //     &*(items as *const _ as *const Self)
+    // }
 
     pub fn nearest(
         &self,
         query: P,
         distance_squared: &impl Fn(P, P) -> P::Scalar,
-    ) -> Option<ItemAndDistance<P, P::Scalar>> {
-        if self.is_empty() {
+    ) -> Option<IndexAndDistance<P::Scalar>> {
+        if self.indices.is_empty() {
             None
         } else {
-            Some(k2_nearest(self.items(), query, distance_squared))
+            Some(k2_nearest(&self.coords, &self.indices, query, distance_squared))
         }
     }
 
-    pub fn within_by_cmp(&self, compare: impl Fn(P, usize) -> Ordering + Copy) -> Vec<P> {
-        k2_within_by_cmp(self, compare)
-    }
-
-    pub fn indices_within_by_cmp(
-        &self,
-        compare: impl Fn(P, usize) -> Ordering + Copy,
-    ) -> Vec<usize> {
-        k2_indices_within_by_cmp(self, compare)
+    pub fn within_by_cmp(&self, compare: impl Fn(P, usize) -> Ordering + Copy) -> Vec<u32> {
+        k2_within_by_cmp(&self.coords, &self.indices, compare)
     }
 
     pub fn within_radius(
@@ -211,7 +192,7 @@ impl<P: K2Point> K2Slice<P> {
         query: P,
         radius: P::Scalar,
         distance_squared: &impl Fn(P, P) -> P::Scalar,
-    ) -> Vec<P> {
+    ) -> Vec<u32> {
         let mut results = self.within_by_cmp(|item, k| {
             let coord = item.get(k);
             if coord < query.get(k) - radius {
@@ -222,33 +203,19 @@ impl<P: K2Point> K2Slice<P> {
                 Ordering::Equal
             }
         });
-        results.retain(|item| distance_squared(*item, query) < radius * radius);
-        results
-    }
-
-    pub fn indices_within_radius(
-        &self,
-        query: P,
-        radius: P::Scalar,
-        distance_squared: &impl Fn(P, P) -> P::Scalar,
-    ) -> Vec<usize> {
-        let mut results = self.indices_within_by_cmp(|item, k| {
-            let coord = item.get(k);
-            if coord < query.get(k) - radius {
-                Ordering::Less
-            } else if coord > query.get(k) + radius {
-                Ordering::Greater
-            } else {
-                Ordering::Equal
-            }
+        results.retain(|index| {
+            distance_squared(self.coords[*index as usize], query) < radius * radius
         });
-        results.retain(|item| distance_squared(self[*item], query) < radius * radius);
         results
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct K2Tree<P: K2Point>(Vec<P>);
+pub struct K2Tree<P: K2Point> {
+    pub coords: Vec<P>,
+    pub indices: Vec<u32>
+}
+/*
 impl<P: K2Point> Deref for K2Tree<P> {
     type Target = K2Slice<P>;
     fn deref(&self) -> &Self::Target {
@@ -267,19 +234,15 @@ impl<P: K2Point> std::borrow::Borrow<K2Slice<P>> for K2Tree<P> {
 }
 impl<P: K2Point> From<K2Tree<P>> for Vec<P> {
     fn from(src: K2Tree<P>) -> Self {
-        src.0
+        src.coords
     }
 }
-impl<P: K2Point> K2Tree<P> {
-    pub fn build_by<F>(mut items: Vec<P>, compare: F) -> Self
-    where
-        F: Fn(P, P, usize) -> Ordering + Copy,
-    {
-        k2_sort_by(&mut items, compare);
-        Self(items)
+impl<P: K2Point> From<K2Tree<P>> for Vec<u32> {
+    fn from(src: K2Tree<P>) -> Self {
+        src.indices
     }
 }
-
+*/
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -316,20 +279,23 @@ mod tests {
 
     #[test]
     fn nearest_point() {
-        let tree = Tree::new(points());
-        let pt = tree.nearest(45.56, -0.955);
-        assert_relative_eq!(pt.get(0), 45.56, epsilon = 0.001);
-        assert_relative_eq!(pt.get(1), -0.955, epsilon = 0.001);
+        let points = points();
+        let tree = Tree::new(points.clone());
+        let index = tree.nearest(45.56, -0.955) as usize;
+        assert_relative_eq!(points[index].get(0), 45.56, epsilon = 0.001);
+        assert_relative_eq!(points[index].get(1), -0.955, epsilon = 0.001);
         //println!("{}, {}", pt.get(0), pt.get(1));
     }
     #[test]
     fn points_within_distance() {
-        let tree = Tree::new(points());
-        let pts = tree.within_distance(45.56, -0.955, 0.25);
-        assert_eq!(pts.len(), 27);
-        for pt in pts.iter() {
+        let points = points();
+        let tree = Tree::new(points.clone());
+        let indices = tree.within_distance(45.56, -0.955, 0.25);
+        assert_eq!(indices.len(), 27);
+        for index in indices.iter() {
+            let index = *index as usize;
             assert!(
-                Utils::geo_fast_distance_squared_km2(Utils::from(45.56, -0.955), *pt).sqrt() < 0.25
+                Utils::geo_fast_distance_squared_km2(Utils::from(45.56, -0.955), points[index]).sqrt() < 0.25
             );
             //println!("{}, {}", pt.get(0), pt.get(1));
         }
@@ -337,12 +303,14 @@ mod tests {
 
     #[test]
     fn points_within_bounds() {
-        let tree = Tree::new(points());
-        let pts = tree.within_bounds(45.57, -0.952, 45.54, -0.958);
-        assert_eq!(pts.len(), 65);
-        for pt in pts.iter() {
+        let points = points();
+        let tree = Tree::new(points.clone());
+        let indices = tree.within_bounds(45.57, -0.952, 45.54, -0.958);
+        assert_eq!(indices.len(), 65);
+        for index in indices.iter() {
+            let index = *index as usize;
             assert_relative_eq!(
-                Utils::geo_fast_distance_squared_km2(Utils::from(45.555, -0.953), *pt).sqrt(),
+                Utils::geo_fast_distance_squared_km2(Utils::from(45.555, -0.953), points[index]).sqrt(),
                 0.0,
                 epsilon = 1.25
             );
