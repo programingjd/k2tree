@@ -98,7 +98,7 @@ export class Tree {
   }
   /**
    * @param {number} distance
-   * @return {LatLonArray[][]}
+   * @return {number[][]}
    */
   clusterify(distance) {
     try {

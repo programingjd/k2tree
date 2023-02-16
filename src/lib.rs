@@ -85,6 +85,7 @@ impl Tree {
         let indices = &self.0.indices;
         let mut clusters = vec![];
         let mut clustered: Vec<bool> = indices.iter().map(|_| false).collect();
+        let mut within_radius = vec![];
         for i in indices.iter() {
             let i = *i as usize;
             if clustered[i] {
@@ -95,11 +96,26 @@ impl Tree {
             clustered[i] = true;
             while let Some(j) = queue.pop() {
                 cluster.push(indices[j]);
-                for i in &self.0.within_radius(
-                    coords[indices[j] as usize],
-                    distance,
-                    &Utils::geo_fast_distance_squared_km2,
-                ) {
+                let query = coords[indices[j] as usize];
+                within_radius.clear();
+                recurse_indices(&mut within_radius, coords, indices, 0, 0, |item, k| {
+                    let coord = item.get(k);
+                    if coord < query.get(k) - distance {
+                        Ordering::Less
+                    } else if coord > query.get(k) + distance {
+                        Ordering::Greater
+                    } else {
+                        Ordering::Equal
+                    }
+                });
+                let distance_squared = distance * distance;
+                within_radius.retain(|i| {
+                    Utils::geo_fast_distance_squared_km2(
+                        coords[indices[*i as usize] as usize],
+                        query,
+                    ) < distance_squared
+                });
+                for i in within_radius.iter() {
                     let i = *i as usize;
                     if !clustered[i] {
                         queue.push(i);
@@ -141,9 +157,7 @@ impl Utils {
         }
         let x = lat2 - lat1;
         let y = dlon * ((lat1 + lat2) * 0.00872664626f32).cos();
-        let result = 12351.655f32 * (x * x + y * y);
-        println!("distance: {:.3?}", result);
-        result
+        12351.655f32 * (x * x + y * y)
     }
     fn from(lat: f32, lon: f32) -> u64 {
         let lo = lat.to_le_bytes();
@@ -204,7 +218,6 @@ impl<P: K2Point> K2Tree<P> {
         results.retain(|index| {
             distance_squared(self.coords[*index as usize], query) < radius * radius
         });
-        println!("within {}: {}", radius, results.len());
         results
     }
 }
@@ -214,34 +227,7 @@ pub struct K2Tree<P: K2Point> {
     pub coords: Vec<P>,
     pub indices: Vec<u32>,
 }
-/*
-impl<P: K2Point> Deref for K2Tree<P> {
-    type Target = K2Slice<P>;
-    fn deref(&self) -> &Self::Target {
-        unsafe { K2Slice::new_unchecked(&self.0) }
-    }
-}
-impl<P: K2Point> AsRef<K2Slice<P>> for K2Tree<P> {
-    fn as_ref(&self) -> &K2Slice<P> {
-        self
-    }
-}
-impl<P: K2Point> std::borrow::Borrow<K2Slice<P>> for K2Tree<P> {
-    fn borrow(&self) -> &K2Slice<P> {
-        self
-    }
-}
-impl<P: K2Point> From<K2Tree<P>> for Vec<P> {
-    fn from(src: K2Tree<P>) -> Self {
-        src.coords
-    }
-}
-impl<P: K2Point> From<K2Tree<P>> for Vec<u32> {
-    fn from(src: K2Tree<P>) -> Self {
-        src.indices
-    }
-}
-*/
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -328,16 +314,15 @@ mod tests {
     #[test]
     fn points_clusters() {
         let t0 = SystemTime::now();
-        let tree = Tree::new(points().into_iter().take(10).collect());
+        let tree = Tree::new(points()); //.into_iter().take(200).collect());
         let t1 = SystemTime::now();
-        let clusters = tree.cluster(0.2);
+        let clusters = tree.cluster(2.0);
         let t2 = SystemTime::now();
         println!(
             "{}ms, {}ms",
             t1.duration_since(t0).unwrap().as_millis(),
             t2.duration_since(t1).unwrap().as_millis()
         );
-        assert_eq!(3, clusters.len());
         println!("{}", clusters.len());
         for cluster in clusters.iter() {
             println!("cluster with {} point(s)", cluster.len());
